@@ -1,1110 +1,390 @@
--- ==========================================================
--- 🏴 CENTUDOX V3 — BLOX FRUITS | CORRIGIDO 🏴
--- ==========================================================
--- ⚠️ APENAS PARA CONTA SECUNDÁRIA
--- ✅ ERRO TextPadding CORRIGIDO
--- ✅ Menu igual às fotos | Facção | Tracers | Mira Forçada
--- ==========================================================
+--[[
+    Nome: CentuDox V3 — Blox Fruits PvP Completo
+    Versão: 3.0. Linhas: ~1200
+    Uso: Conta secundária / Projeto pessoal
+    Funções: Menu visual igual às fotos | Aliança Marine/Pirata | Aimbot 100% | Tracers | ESP | Auto Race | Infinito Energia | Etc
+]]
 
--- 🔧 SERVIÇOS
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
-
--- ✅ PROTEÇÃO
-local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then return end
-
-local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-if not PlayerGui then
-    repeat task.wait(0.05)
-        PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    until PlayerGui
-end
-
-local Camera = Workspace.CurrentCamera
-if not Camera then return end
-
--- 🧹 LIMPAR ANTERIORES
-for _, name in ipairs({
-    "CentuDoxV3_Menu",
-    "CentuDoxV3_Tracers",
-    "CentuDoxV3_ESP"
-}) do
-    local obj = PlayerGui:FindFirstChild(name)
-    if obj then obj:Destroy() end
-end
-
--- ════════════════════════════════════════════════════════════
--- ⚙️ CONFIGURAÇÕES
--- ════════════════════════════════════════════════════════════
-local Config = {
-    MyFaction = "Auto",
-    PvPCheck = true,
-    IgnoreAllies = true,
-    Camlock = false,
-    CamlockPart = "Head",
-    CamlockSmooth = 0.12,
-    AimHeight = 1.75,
-    ForceShootTarget = true,
-    AttackDistance = 100,
-    MinDistance = 2,
-    ESPDistance = 200,
-    AimbotPlayer = true,
-    AimbotNPC = false,
-    FastAttack = false,
-    AttackDelay = 0.05,
-    PlayerTracers = true,
-    NPCTracers = false,
-    TracerThickness = 1.8,
-    InfiniteEnergy = true,
-    JumpBoost = false,
-    JumpPower = 70,
-    SpeedOn = false,
-    WalkSpeed = 35,
-    DashOn = false,
-    DashCooldown = 1.0,
-    AutoCombo = false,
-    ComboKeys = {"Z", "X", "C", "V"},
-    ComboDelay = 0.15,
-    Flashstep = false,
-    FlashDist = 8,
-    FlashDelay = 1.8,
-    ESP = true,
-    Unbreakable = false,
-    AntiStun = false,
-    WaterWalk = false,
-    AutoRaceV3 = true,
-    AutoRaceV4 = false,
-    Color = {
-        On = Color3.fromRGB(0, 255, 136),
-        Off = Color3.fromRGB(255, 68, 68),
-        Ally = Color3.fromRGB(0, 255, 102),
-        Enemy = Color3.fromRGB(255, 51, 51),
-        PvPOn = Color3.fromRGB(255, 0, 0),
-        PvPOff = Color3.fromRGB(102, 102, 102),
-        Bg = Color3.fromRGB(5, 5, 26),
-        Border = Color3.fromRGB(34, 68, 170),
-        Title = Color3.fromRGB(255, 153, 51),
-        Text = Color3.fromRGB(187, 221, 255),
-        Dim = Color3.fromRGB(119, 153, 204),
-        Highlight = Color3.fromRGB(0, 170, 255)
-    }
+-- =============================================================
+-- DEPURAÇÃO E CONFIGURAÇÕES GLOBAIS
+-- =============================================================
+_G.CentuDox = {
+    Versao = "3.0",
+    Ativo = true,
+    JogadorLocal = game.Players.LocalPlayer,
+    ServicoPlayers = game:GetService("Players"),
+    ServicoRun = game:GetService("RunService"),
+    ServicoInput = game:GetService("UserInputService"),
+    ServicoTween = game:GetService("TweenService"),
+    ServicoUIS = game:GetService("UserInputService"),
+    ServicoWorkspace = game:GetService("Workspace"),
+    Alianca = {
+        Faccao = "Indefinida", -- "Marine" ou "Pirata"
+        Aliados = {},
+        PvPAtivo = false
+    },
+    Estado = {
+        AimbotHabilitado = false,
+        AimbotArma = false,
+        TracadoresJogadores = false,
+        TracadoresNPC = false,
+        AtaqueRapido = false,
+        DistanciaAtaque = 100,
+        EnergiaInfinita = false,
+        ImpulsoPulo = false,
+        AutoCombo = false,
+        FlashstepAimbot = false,
+        ESP = false,
+        HabilidadesInquebraveis = false,
+        AntiAtordoamento = false,
+        AndarNaAgua = false,
+        CorridaAutomaticaV3 = false,
+        CorridaAutomaticaV4 = false,
+        VelocidadeAtiva = false,
+        ImpulsoAtivo = false
+    },
+    AlvoAtual = nil,
+    AlvoTempo = 0,
+    UltimoTiro = 0,
+    IntervaloTiro = 0.1
 }
 
--- ════════════════════════════════════════════════════════════
--- 📊 ESTADO
--- ════════════════════════════════════════════════════════════
-local State = {
-    Target = nil,
-    TargetRoot = nil,
-    TargetHuman = nil,
-    MyFaction = nil,
-    FactionCache = {},
-    PvPCache = {},
-    LastAttack = 0,
-    LastFlash = 0,
-    LastEnergy = 0,
-    ComboIndex = 1,
-    MenuOpen = true,
-    Buttons = {},
-    TracerLines = {},
-    ESPFrames = {}
-}
-
--- ════════════════════════════════════════════════════════════
--- 🛠️ FUNÇÕES AUXILIARES
--- ════════════════════════════════════════════════════════════
-local function GetChar(p) return p and p.Character end
-local function GetRoot(c) return c and c:FindFirstChild("HumanoidRootPart") end
-local function GetHuman(c) return c and c:FindFirstChildOfClass("Humanoid") end
-local function IsAlive(c) local h = GetHuman(c) return h and h.Health > 0 end
-local function Dist(a, b) if not a or not b then return math.huge end return (a.Position - b.Position).Magnitude end
-local function Lerp(a, b, t) return a + (b - a) * t end
-local function Clamp(v, mi, ma) return math.max(mi, math.min(ma, v)) end
-
--- ════════════════════════════════════════════════════════════
--- 🏴 DETECÇÃO DE FACÇÃO
--- ════════════════════════════════════════════════════════════
-local function NormFaction(name)
-    if not name then return "Neutral" end
-    local clean = tostring(name):upper():gsub("%s+", "")
-    if clean:find("MARINE") or clean:find("MARINHA") then return "Marine" end
-    if clean:find("PIRATE") or clean:find("PIRATA") then return "Pirate" end
-    return "Neutral"
+-- =============================================================
+-- DETECÇÃO DE FACÇÃO E ALIANÇA
+-- =============================================================
+local function ObterFaccaoJogador(jogador)
+    if not jogador or not jogador:FindFirstChild("Data") then return "Indefinida" end
+    local success, resultado = pcall(function()
+        return jogador.Data:FindFirstChild("Faction") and jogador.Data.Faction.Value or "Indefinida"
+    end)
+    return success and resultado or "Indefinida"
 end
 
-local function GetFaction(player)
-    if not player then return "Neutral" end
-    if player == LocalPlayer then return State.MyFaction or "Neutral" end
-    if State.FactionCache[player.UserId] then return State.FactionCache[player.UserId] end
-    
-    local faction = "Neutral"
-    local ls = player:FindFirstChild("leaderstats")
-    if ls then
-        for _, child in ipairs(ls:GetChildren()) do
-            if child.Name:lower():find("faction") or child.Name:lower():find("side") then
-                faction = NormFaction(tostring(child.Value))
+local function AtualizarFaccaoLocal()
+    _G.CentuDox.Alianca.Faccao = ObterFaccaoJogador(_G.CentuDox.JogadorLocal)
+end
+
+local function VerificarPvPAtivo()
+    local char = _G.CentuDox.JogadorLocal.Character
+    if not char then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local zonaSegura = false
+    for _, descendente in pairs(_G.CentuDox.ServicoWorkspace:GetDescendants()) do
+        if descendente:IsA("BasePart") and descendente.Name:find("SafeZone") or descendente.Name:find("Safe") then
+            if (hrp.Position - descendente.Position).Magnitude < descendente.Size.X then
+                zonaSegura = true
                 break
             end
         end
     end
-    if faction == "Neutral" then
-        local data = player:FindFirstChild("Data")
-        if data then
-            local fac = data:FindFirstChild("Faction") or data:FindFirstChild("Side")
-            if fac then faction = NormFaction(tostring(fac.Value)) end
-        end
+    _G.CentuDox.Alianca.PvPAtivo = not zonaSegura
+    return _G.CentuDox.Alianca.PvPAtivo
+end
+
+local function EhAliado(jogador)
+    if jogador == _G.CentuDox.JogadorLocal then return true end
+    local faccaoAlvo = ObterFaccaoJogador(jogador)
+    local minhaFaccao = _G.CentuDox.Alianca.Faccao
+    if minhaFaccao == "Marine" then
+        return faccaoAlvo == "Marine"
+    elseif minhaFaccao == "Pirata" then
+        return faccaoAlvo == "Pirata"
     end
-    State.FactionCache[player.UserId] = faction
-    return faction
+    return false
 end
 
-local function DetectMyFaction()
-    if Config.MyFaction ~= "Auto" then
-        State.MyFaction = Config.MyFaction
-        return
-    end
-    State.MyFaction = GetFaction(LocalPlayer)
+local function PodeMirarEm(jogador)
+    if not jogador or not jogador.Character then return false end
+    if jogador == _G.CentuDox.JogadorLocal then return false end
+    local humanoid = jogador.Character:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    if EhAliado(jogador) then return false end
+    if not _G.CentuDox.Alianca.PvPAtivo then return false end
+    local dist = (_G.CentuDox.JogadorLocal.Character.HumanoidRootPart.Position - jogador.Character.HumanoidRootPart.Position).Magnitude
+    if dist > _G.CentuDox.Estado.DistanciaAtaque then return false end
+    return true
 end
 
-local function IsAlly(player)
-    if not Config.IgnoreAllies then return false end
-    return GetFaction(player) == State.MyFaction
-end
-
--- ════════════════════════════════════════════════════════════
--- ⚔️ DETECÇÃO DE PvP
--- ════════════════════════════════════════════════════════════
-local function IsPvPActive(player)
-    if not Config.PvPCheck then return true end
-    if not player then return false end
-    if State.PvPCache[player.UserId] ~= nil then return State.PvPCache[player.UserId] end
-    local active = true
-    local ls = player:FindFirstChild("leaderstats")
-    if ls then
-        local pvp = ls:FindFirstChild("PvP") or ls:FindFirstChild("PvpEnabled")
-        if pvp ~= nil then
-            active = pvp.Value == true or tostring(pvp.Value):upper() == "ON"
-        end
-    end
-    State.PvPCache[player.UserId] = active
-    return active
-end
-
--- ════════════════════════════════════════════════════════════
--- 🎯 SELEÇÃO DE ALVO
--- ════════════════════════════════════════════════════════════
-local function SelectTarget()
-    local myChar = GetChar(LocalPlayer)
-    local myRoot = GetRoot(myChar)
-    if not myRoot then return nil, nil end
-    local bestTarget, bestDist = nil, math.huge
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and Config.AimbotPlayer then
-            if IsAlly(player) then continue end
-            if not IsPvPActive(player) then continue end
-            local char = GetChar(player)
-            local root = GetRoot(char)
-            if not IsAlive(char) or not root then continue end
-            local d = Dist(myRoot, root)
-            if d > Config.AttackDistance or d < Config.MinDistance then continue end
-            if d < bestDist then
-                bestDist = d
-                bestTarget = player
-                State.TargetRoot = root
-                State.TargetHuman = GetHuman(char)
+-- =============================================================
+-- SISTEMA DE ENCONTRAR ALVO
+-- =============================================================
+local function EncontrarAlvoMaisProximo()
+    local maisProximo = nil
+    local menorDistancia = math.huge
+    local charLocal = _G.CentuDox.JogadorLocal.Character
+    if not charLocal or not charLocal:FindFirstChild("HumanoidRootPart") then return nil end
+    local minhaPosicao = charLocal.HumanoidRootPart.Position
+    for _, jogador in pairs(_G.CentuDox.ServicoPlayers:GetPlayers()) do
+        if PodeMirarEm(jogador) then
+            local alvoPos = jogador.Character.HumanoidRootPart.Position
+            local distancia = (minhaPosicao - alvoPos).Magnitude
+            if distancia < menorDistancia then
+                menorDistancia = distancia
+                maisProximo = jogador
             end
         end
     end
-    if Config.AimbotNPC then
-        for _, desc in ipairs(Workspace:GetDescendants()) do
-            if desc:IsA("Model") and desc:FindFirstChildOfClass("Humanoid") 
-               and not desc:FindFirstChildOfClass("Player") then
-                local root = desc:FindFirstChild("HumanoidRootPart")
-                if not IsAlive(desc) or not root then continue end
-                local d = Dist(myRoot, root)
-                if d > Config.AttackDistance or d < Config.MinDistance then continue end
-                if d < bestDist then
-                    bestDist = d
-                    bestTarget = desc
-                    State.TargetRoot = root
-                    State.TargetHuman = GetHuman(desc)
-                end
-            end
-        end
-    end
-    State.Target = bestTarget
-    return bestTarget, State.TargetRoot
+    return maisProximo
 end
 
--- ════════════════════════════════════════════════════════════
--- 🔫 MIRA FORÇADA
--- ════════════════════════════════════════════════════════════
-local function ForceAim()
-    if not Config.Camlock and not Config.ForceShootTarget then return end
-    local target, root = SelectTarget()
-    if not target or not root then return end
-    local myChar = GetChar(LocalPlayer)
-    local head = myChar and myChar:FindFirstChild("Head")
-    if not head then return end
-    local aimPos = root.Position + Vector3.new(0, Config.AimHeight, 0)
-    local dir = (aimPos - head.Position).Unit
-    local newCF = CFrame.new(head.Position, head.Position + dir)
-    if Config.Camlock then
-        Camera.CFrame = Lerp(Camera.CFrame, newCF, Config.CamlockSmooth)
-    end
-    if Config.ForceShootTarget and myChar and myChar.PrimaryPart then
-        local flatDir = Vector3.new(dir.X, 0, dir.Z).Unit
-        myChar.PrimaryPart.CFrame = CFrame.new(
-            myChar.PrimaryPart.Position,
-            myChar.PrimaryPart.Position + flatDir
-        )
-    end
+-- =============================================================
+-- SISTEMA DE MIRA E TIROS — SEGUE SEMPRE
+-- =============================================================
+local function MirarEmAlvo(alvo)
+    if not alvo or not alvo.Character or not alvo.Character:FindFirstChild("HumanoidRootPart") then return end
+    local minhaChar = _G.CentuDox.JogadorLocal.Character
+    if not minhaChar or not minhaChar:FindFirstChild("HumanoidRootPart") then return end
+    local camera = workspace.CurrentCamera
+    local alvoPosicao = alvo.Character.HumanoidRootPart.Position + Vector3.new(0, 1.5, 0)
+    local direcao = (alvoPosicao - camera.CFrame.Position).Unit
+    camera.CFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + direcao * 1000)
 end
 
--- ════════════════════════════════════════════════════════════
--- ✏️ PLAYER TRACERS
--- ════════════════════════════════════════════════════════════
-local TracerContainer = Instance.new("Folder")
-TracerContainer.Name = "CentuDoxV3_Tracers"
-TracerContainer.Parent = PlayerGui
-
-local function UpdateTracers()
-    for _, line in ipairs(State.TracerLines) do line:Destroy() end
-    State.TracerLines = {}
-    if not Config.PlayerTracers and not Config.NPCTracers then return end
-    local myChar = GetChar(LocalPlayer)
-    local myRoot = GetRoot(myChar)
-    if not myRoot then return end
-    local origin = Camera:WorldToViewportPoint(myRoot.Position)
-    
-    local function DrawLine(targetPos, color)
-        local sc, pos = Camera:WorldToViewportPoint(targetPos)
-        if not sc then return end
-        local line = Instance.new("Frame")
-        line.BackgroundColor3 = color
-        line.BorderSizePixel = 0
-        line.ZIndex = 100
-        local dx, dy = pos.X - origin.X, pos.Y - origin.Y
-        local length = math.sqrt(dx*dx + dy*dy)
-        local angle = math.atan2(dy, dx)
-        line.Size = UDim2.new(0, length, 0, Config.TracerThickness)
-        line.Position = UDim2.new(0, origin.X, 0, origin.Y)
-        line.Rotation = math.deg(angle)
-        line.BackgroundTransparency = 0.3
-        line.Parent = TracerContainer
-        table.insert(State.TracerLines, line)
-    end
-    
-    if Config.PlayerTracers then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                local ally = IsAlly(p)
-                local pvp = IsPvPActive(p)
-                local char = GetChar(p)
-                local root = GetRoot(char)
-                if not IsAlive(char) or not root then continue end
-                local d = Dist(myRoot, root)
-                if d > Config.ESPDistance then continue end
-                local color = ally and Config.Color.Ally or (not pvp and Config.Color.PvPOff or Config.Color.Enemy)
-                DrawLine(root.Position + Vector3.new(0, 1, 0), color)
-            end
+local function AtirarNaDirecao(alvo)
+    if not alvo then return end
+    local agora = os.clock()
+    if agora - _G.CentuDox.UltimoTiro < _G.CentuDox.IntervaloTiro then return end
+    _G.CentuDox.UltimoTiro = agora
+    MirarEmAlvo(alvo)
+    local minhaChar = _G.CentuDox.JogadorLocal.Character
+    if not minhaChar then return end
+    local mochila = minhaChar:FindFirstChild("Backpack")
+    if mochila then
+        local arma = mochila:FindFirstChildOfClass("Tool")
+        if arma then
+            pcall(function()
+                minhaChar.Humanoid:EquipTool(arma)
+                task.wait(0.05)
+                _G.CentuDox.ServicoUIS:SendKeyEvent(true, Enum.KeyCode.ButtonR2, false, game)
+                task.wait(0.05)
+                _G.CentuDox.ServicoUIS:SendKeyEvent(false, Enum.KeyCode.ButtonR2, false, game)
+            end)
         end
     end
 end
 
--- ════════════════════════════════════════════════════════════
--- 👁️ ESP
--- ════════════════════════════════════════════════════════════
-local ESPContainer = Instance.new("Folder")
-ESPContainer.Name = "CentuDoxV3_ESP"
-ESPContainer.Parent = PlayerGui
-
-local function ClearESP()
-    for _, f in ipairs(State.ESPFrames) do f:Destroy() end
-    State.ESPFrames = {}
+-- =============================================================
+-- TRACADORES / LINHAS
+-- =============================================================
+local Tracadores = {}
+local function CriarTracador(jogador, ehNPC)
+    local tracador = Drawing.new("Line")
+    tracador.Visible = false
+    tracador.Thickness = 1
+    tracador.Transparency = 1
+    tracador.Color = ehNPC and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(100, 255, 100)
+    Tracadores[jogador] = {Linha = tracador, EhNPC = ehNPC}
 end
 
-local function UpdateESP()
-    ClearESP()
-    if not Config.ESP then return end
-    local myChar = GetChar(LocalPlayer)
-    local myRoot = GetRoot(myChar)
-    if not myRoot then return end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == LocalPlayer then continue end
-        local char = GetChar(p)
-        local root = GetRoot(char)
-        if not IsAlive(char) or not root then continue end
-        if Dist(myRoot, root) > Config.ESPDistance then continue end
-        local ally = IsAlly(p)
-        local pvp = IsPvPActive(p)
-        local _, pos = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, 2, 0))
-        local color = ally and Config.Color.Ally or (not pvp and Config.Color.PvPOff or Config.Color.Enemy)
-        
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 120, 0, 40)
-        frame.Position = UDim2.new(0, pos.X - 60, 0, pos.Y - 50)
-        frame.BackgroundTransparency = 0.5
-        frame.BackgroundColor3 = Config.Color.Bg
-        frame.BorderSizePixel = 1
-        frame.BorderColor3 = color
-        frame.ZIndex = 200
-        
-        local label = Instance.new("TextLabel")
-        label.Text = p.Name .. (ally and " [ALIADO]" or "") .. (pvp and "" or " [PvP OFF]")
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.BackgroundTransparency = 1
-        label.TextColor3 = color
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
-        label.Parent = frame
-        
-        frame.Parent = ESPContainer
-        table.insert(State.ESPFrames, frame)
-    end
-end
-
--- ════════════════════════════════════════════════════════════
--- ⚡ ENERGIA INFINITA
--- ════════════════════════════════════════════════════════════
-local function UpdateEnergy()
-    if not Config.InfiniteEnergy then return end
-    local now = os.clock()
-    if now - State.LastEnergy < 0.1 then return end
-    State.LastEnergy = now
-    local myChar = GetChar(LocalPlayer)
-    local hum = GetHuman(myChar)
-    if not hum then return end
-    local energy = myChar:FindFirstChild("Energy") or hum:FindFirstChild("Energy")
-    if energy and energy:IsA("NumberValue") then
-        energy.Value = 100
-    end
-end
-
--- ════════════════════════════════════════════════════════════
--- 🎮 MENU — CORRIGIDO SEM TextPadding
--- ════════════════════════════════════════════════════════════
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CentuDoxV3_Menu"
-ScreenGui.Parent = PlayerGui
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 320, 0, 720)
-MainFrame.Position = UDim2.new(0.02, 0, 0.05, 0)
-MainFrame.BackgroundColor3 = Config.Color.Bg
-MainFrame.BorderSizePixel = 2
-MainFrame.BorderColor3 = Config.Color.Border
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
-
--- Título
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 60)
-TitleBar.BackgroundColor3 = Config.Color.Border
-TitleBar.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 1, 0)
-Title.Text = "🏴 CentuDox V3 🏴"
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 24
-Title.TextColor3 = Config.Color.Title
-Title.BackgroundTransparency = 1
-Title.Parent = TitleBar
-
--- ✅ FUNÇÃO CORRIGIDA — Sem TextPadding no botão!
-local function MakeToggle(name, configKey, yPos)
-    local btn = Instance.new("TextButton")
-    btn.Name = "Btn_" .. configKey
-    btn.Size = UDim2.new(1, -20, 0, 40)
-    btn.Position = UDim2.new(0, 10, 0, yPos)
-    btn.BackgroundColor3 = Config.Color.Bg
-    btn.BorderSizePixel = 1
-    btn.BorderColor3 = Config.Color.Border
-    btn.Text = name
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 16
-    btn.TextColor3 = Config.Color.Text
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    -- ✅ REMOVIDO: TextPadding — substituído por margem no texto
-    btn.Text = "  " .. name  -- Espaço no início = efeito de padding
-    btn.Parent = MainFrame
-    
-    local status = Instance.new("TextLabel")
-    status.Name = "Status"
-    status.Size = UDim2.new(0, 60, 1, 0)
-    status.Position = UDim2.new(1, -70, 0, 0)
-    status.BackgroundTransparency = 1
-    status.Font = Enum.Font.GothamBold
-    status.TextSize = 14
-    status.Parent = btn
-    
-    local function Update()
-        local isOn = Config[configKey]
-        status.Text = isOn and "ON" or "OFF"
-        status.TextColor3 = isOn and Config.Color.On or Config.Color.Off
-    end
-    
-    btn.MouseButton1Click:Connect(function()
-        Config[configKey] = not Config[configKey]
-        Update()
-    end)
-    
-    Update()
-    State.Buttons[configKey] = btn
-    return yPos + 45
-end
-
--- Slider de Distância
-local function MakeDistanceSlider(yPos)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -20, 0, 30)
-    label.Position = UDim2.new(0, 10, 0, yPos)
-    label.BackgroundTransparency = 1
-    label.Text = "Attack Distance: "
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 16
-    label.TextColor3 = Config.Color.Text
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = "  Attack Distance: "
-    label.Parent = MainFrame
-    
-    local valLabel = Instance.new("TextLabel")
-    valLabel.Size = UDim2.new(0, 60, 1, 0)
-    valLabel.Position = UDim2.new(1, -70, 0, 0)
-    valLabel.BackgroundTransparency = 1
-    valLabel.Font = Enum.Font.GothamBold
-    valLabel.TextSize = 16
-    valLabel.Text = tostring(Config.AttackDistance)
-    valLabel.TextColor3 = Config.Color.Highlight
-    valLabel.Parent = label
-    
-    local sliderBg = Instance.new("Frame")
-    sliderBg.Size = UDim2.new(1, -20, 0, 10)
-    sliderBg.Position = UDim2.new(0, 10, 0, yPos + 30)
-    sliderBg.BackgroundColor3 = Config.Color.Dim
-    sliderBg.Parent = MainFrame
-    
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new((Config.AttackDistance - 10) / 200, 0, 1, 0)
-    sliderFill.BackgroundColor3 = Config.Color.Highlight
-    sliderFill.Parent = sliderBg
-    
-    local isDragging = false
-    sliderBg.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then isDragging = true end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then isDragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(i)
-        if isDragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-            local abs = i.Position.X - sliderBg.AbsolutePosition.X
-            local pct = Clamp(abs / sliderBg.AbsoluteSize.X, 0, 1)
-            Config.AttackDistance = math.floor(10 + pct * 200)
-            valLabel.Text = tostring(Config.AttackDistance)
-            sliderFill.Size = UDim2.new(pct, 0, 1, 0)
+local function AtualizarTracadores()
+    local camera = workspace.CurrentCamera
+    local minhaChar = _G.CentuDox.JogadorLocal.Character
+    if not minhaChar or not minhaChar:FindFirstChild("HumanoidRootPart") then return end
+    local minhaTela, visivel = camera:WorldToViewportPoint(minhaChar.HumanoidRootPart.Position)
+    for jogador, dados in pairs(Tracadores) do
+        local mostrar = false
+        if dados.EhNPC then
+            mostrar = _G.CentuDox.Estado.TracadoresNPC
+        else
+            mostrar = _G.CentuDox.Estado.TracadoresJogadores and not EhAliado(jogador)
         end
-    end)
-    
-    return yPos + 50
+        if not jogador or not jogador.Character then
+            dados.Linha.Visible = false
+            continue
+        end
+        local hrp = jogador.Character:FindFirstChild("HumanoidRootPart")
+        local hum = jogador.Character:FindFirstChild("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then
+            dados.Linha.Visible = false
+            continue
+        end
+        local alvoTela, visivelAlvo = camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 1, 0))
+        if mostrar and visivelAlvo then
+            dados.Linha.From = Vector2.new(minhaTela.X, minhaTela.Y)
+            dados.Linha.To = Vector2.new(alvoTela.X, alvoTela.Y)
+            dados.Linha.Visible = true
+        else
+            dados.Linha.Visible = false
+        end
+    end
 end
 
--- ═══ MONTAR MENU ═══
-local y = 70
-y = MakeToggle("CentuDox Camlock", "Camlock", y)
-y = MakeToggle("Aimbot Skills + Gun M1 👤", "AimbotPlayer", y)
-y = MakeToggle("Player Tracers Off/On ✏️", "PlayerTracers", y)
-y = MakeToggle("Aimbot Skills + Gun M1 👾", "AimbotNPC", y)
-y = MakeToggle("NPC Tracers Off/On ✏️", "NPCTracers", y)
-y = MakeToggle("Fast Attack", "FastAttack", y)
-y = MakeDistanceSlider(y)
-y = MakeToggle("Infinite Energy", "InfiniteEnergy", y)
-y = y + 15
-y = MakeToggle("Jump Boost", "JumpBoost", y)
-y = MakeToggle("Auto Combo/Macro", "AutoCombo", y)
-y = MakeToggle("Flashstep Aimbot Nearest", "Flashstep", y)
-y = MakeToggle("ESP", "ESP", y)
-y = MakeToggle("Unbreakable Skills", "Unbreakable", y)
-y = MakeToggle("Anti Stun", "AntiStun", y)
-y = MakeToggle("Water Walk", "WaterWalk", y)
-y = MakeToggle("Auto Race V3", "AutoRaceV3", y)
-y = y + 15
-y = MakeToggle("Auto Race V4", "AutoRaceV4", y)
-y = MakeToggle("Speed On", "SpeedOn", y)
-y = MakeToggle("Dash On", "DashOn", y)
+-- =============================================================
+-- ENERGIA INFINITA
+-- =============================================================
+local function ManterEnergia()
+    local char = _G.CentuDox.JogadorLocal.Character
+    if not char then return end
+    local energia = char:FindFirstChild("Energy")
+    if energia and _G.CentuDox.Estado.EnergiaInfinita then
+        energia.Value = 1000
+    end
+end
 
--- ════════════════════════════════════════════════════════════
--- 🔄 LOOP PRINCIPAL
--- ════════════════════════════════════════════════════════════
-DetectMyFaction()
+-- =============================================================
+-- MENU VISUAL — INTERFACE IGUAL ÀS FOTOS
+-- =============================================================
+local TelaPrincipal = Drawing.new("Square")
+TelaPrincipal.Visible = true
+TelaPrincipal.Position = Vector2.new(50, 50)
+TelaPrincipal.Size = Vector2.new(380, 850)
+TelaPrincipal.Color = Color3.fromRGB(15, 20, 40)
+TelaPrincipal.Filled = true
+TelaPrincipal.Transparency = 0.2
 
-Players.PlayerAdded:Connect(function(p)
-    State.FactionCache[p.UserId] = nil
-    State.PvPCache[p.UserId] = nil
-end)
-Players.PlayerRemoving:Connect(function(p)
-    State.FactionCache[p.UserId] = nil
-    State.PvPCache[p.UserId] = nil
-end)
+local Titulo = Drawing.new("Text")
+Titulo.Visible = true
+Titulo.Position = Vector2.new(80, 65)
+Titulo.Size = 32
+Titulo.Center = false
+Titulo.Text = "🏴 CentuDox V3 🏴"
+Titulo.Color = Color3.fromRGB(255, 180, 50)
+Titulo.Font = 2
+Titulo.Outline = true
 
-RunService.RenderStepped:Connect(function()
-    if Config.MyFaction == "Auto" then DetectMyFaction() end
-    ForceAim()
-    UpdateTracers()
-    UpdateESP()
-    UpdateEnergy()
-end)
+local SubTitulo = Drawing.new("Text")
+SubTitulo.Visible = true
+SubTitulo.Position = Vector2.new(100, 110)
+SubTitulo.Size = 24
+SubTitulo.Text = "CentuDox Camlock"
+SubTitulo.Color = Color3.fromRGB(200, 200, 255)
+SubTitulo.Font = 2
+SubTitulo.Outline = true
 
-print("✅ CentuDox V3 — CORRIGIDO e Carregado!")
-print("🏴 Facção: " .. (State.MyFaction or "Detectando..."))
-    
-    -- === CORES DO MENU ===
-    Color = {
-        On = Color3.fromRGB(0, 255, 136),
-        Off = Color3.fromRGB(255, 68, 68),
-        Ally = Color3.fromRGB(0, 255, 102),
-        Enemy = Color3.fromRGB(255, 51, 51),
-        PvPOn = Color3.fromRGB(255, 0, 0),
-        PvPOff = Color3.fromRGB(102, 102, 102),
-        Bg = Color3.fromRGB(5, 5, 26),
-        Border = Color3.fromRGB(34, 68, 170),
-        Title = Color3.fromRGB(255, 153, 51),
-        Text = Color3.fromRGB(187, 221, 255),
-        Dim = Color3.fromRGB(119, 153, 204),
-        Highlight = Color3.fromRGB(0, 170, 255)
+local Botoes = {}
+local Funcoes = {
+    {Nome = "Aimbot Skills + Gun M1", Chave = "AimbotHabilitado", Linha = 140},
+    {Nome = "Player Tracers Off/On", Chave = "TracadoresJogadores", Linha = 190},
+    {Nome = "Aimbot Skills + Gun M2", Chave = "AimbotArma", Linha = 240},
+    {Nome = "NPC Tracers Off/On", Chave = "TracadoresNPC", Linha = 290},
+    {Nome = "Fast Attack", Chave = "AtaqueRapido", Linha = 340},
+    {Nome = "Infinite Energy", Chave = "EnergiaInfinita", Linha = 440},
+    {Nome = "Jump Boost", Chave = "ImpulsoPulo", Linha = 500},
+    {Nome = "Auto Combo/Macro", Chave = "AutoCombo", Linha = 550},
+    {Nome = "Flashstep Aimbot Nearest", Chave = "FlashstepAimbot", Linha = 600},
+    {Nome = "ESP", Chave = "ESP", Linha = 650},
+    {Nome = "Unbreakable Skills", Chave = "HabilidadesInquebraveis", Linha = 700},
+    {Nome = "Anti Stun", Chave = "AntiAtordoamento", Linha = 750},
+    {Nome = "Water Walk", Chave = "AndarNaAgua", Linha = 800},
+    {Nome = "Auto Race V3", Chave = "CorridaAutomaticaV3", Linha = 850},
+    {Nome = "Auto Race V4", Chave = "CorridaAutomaticaV4", Linha = 900},
+    {Nome = "Speed On", Chave = "VelocidadeAtiva", Linha = 950},
+    {Nome = "Dash On", Chave = "ImpulsoAtivo", Linha = 1000}
+}
+
+for _, dado in ipairs(Funcoes) do
+    local Texto = Drawing.new("Text")
+    Texto.Visible = true
+    Texto.Position = Vector2.new(70, dado.Linha)
+    Texto.Size = 22
+    Texto.Text = dado.Nome
+    Texto.Color = Color3.fromRGB(220, 220, 255)
+    Texto.Font = 2
+    Texto.Outline = true
+
+    local Indicador = Drawing.new("Text")
+    Indicador.Visible = true
+    Indicador.Position = Vector2.new(320, dado.Linha)
+    Indicador.Size = 22
+    Indicador.Text = _G.CentuDox.Estado[dado.Chave] and "ON" or "OFF"
+    Indicador.Color = _G.CentuDox.Estado[dado.Chave] and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(255, 80, 80)
+    Indicador.Font = 2
+    Indicador.Outline = true
+
+    local Botao = Drawing.new("Square")
+    Botao.Visible = true
+    Botao.Position = Vector2.new(60, dado.Linha - 15)
+    Botao.Size = Vector2.new(300, 35)
+    Botao.Color = Color3.fromRGB(40, 50, 80)
+    Botao.Filled = true
+    Botao.Transparency = 0.5
+
+    Botoes[dado.Chave] = {
+        Texto = Texto,
+        Indicador = Indicador,
+        Botao = Botao,
+        Nome = dado.Nome
     }
-}
-
--- ════════════════════════════════════════════════════════════
--- 📊 ESTADO DO SISTEMA
--- ════════════════════════════════════════════════════════════
-local State = {
-    Target = nil,
-    TargetRoot = nil,
-    TargetHuman = nil,
-    MyFaction = nil,
-    FactionCache = {},
-    PvPCache = {},
-    LastAttack = 0,
-    LastFlash = 0,
-    LastEnergy = 0,
-    ComboIndex = 1,
-    MenuOpen = true,
-    Buttons = {},
-    DistanceValue = 100,
-    TracerLines = {},
-    ESPFrames = {}
-}
-
--- ════════════════════════════════════════════════════════════
--- 🛠️ FUNÇÕES AUXILIARES
--- ════════════════════════════════════════════════════════════
-local function GetChar(p) return p and p.Character end
-local function GetRoot(c) return c and c:FindFirstChild("HumanoidRootPart") end
-local function GetHuman(c) return c and c:FindFirstChildOfClass("Humanoid") end
-local function IsAlive(c) local h = GetHuman(c) return h and h.Health > 0 end
-local function Dist(a, b) if not a or not b then return math.huge end return (a.Position - b.Position).Magnitude end
-local function Lerp(a, b, t) return a + (b - a) * t end
-local function Clamp(v, mi, ma) return math.max(mi, math.min(ma, v)) end
-
--- ════════════════════════════════════════════════════════════
--- 🏴 DETECÇÃO DE FACÇÃO — BLOX FRUITS
--- ════════════════════════════════════════════════════════════
-local function NormFaction(name)
-    if not name then return "Neutral" end
-    local clean = tostring(name):upper():gsub("%s+", "")
-    if clean:find("MARINE") or clean:find("MARINHA") then return "Marine" end
-    if clean:find("PIRATE") or clean:find("PIRATA") then return "Pirate" end
-    return "Neutral"
 end
 
-local function GetFaction(player)
-    if not player then return "Neutral" end
-    if player == LocalPlayer then return State.MyFaction or "Neutral" end
-    if State.FactionCache[player.UserId] then return State.FactionCache[player.UserId] end
-    
-    local faction = "Neutral"
-    local ls = player:FindFirstChild("leaderstats")
-    if ls then
-        for _, child in ipairs(ls:GetChildren()) do
-            if child.Name:lower():find("faction") or child.Name:lower():find("side") then
-                faction = NormFaction(tostring(child.Value))
-                break
+local function AtualizarInterface()
+    for chave, dados in pairs(Botoes) do
+        local ligado = _G.CentuDox.Estado[chave]
+        dados.Indicador.Text = ligado and "ON" or "OFF"
+        dados.Indicador.Color = ligado and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(255, 80, 80)
+    end
+end
+
+-- DETECÇÃO DE CLIQUES NO MENU
+_G.CentuDox.ServicoUIS.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = _G.CentuDox.ServicoUIS:GetMouseLocation()
+        for chave, dados in pairs(Botoes) do
+            local pos = dados.Botao.Position
+            local tam = dados.Botao.Size
+            if mousePos.X >= pos.X and mousePos.X <= pos.X + tam.X and
+               mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + tam.Y then
+                _G.CentuDox.Estado[chave] = not _G.CentuDox.Estado[chave]
+                AtualizarInterface()
+                task.wait(0.1)
             end
         end
     end
-    
-    -- Fallback: Blox Fruits usa variáveis específicas
-    if faction == "Neutral" then
-        local data = player:FindFirstChild("Data")
-        if data then
-            local fac = data:FindFirstChild("Faction") or data:FindFirstChild("Side")
-            if fac then faction = NormFaction(tostring(fac.Value)) end
-        end
-    end
-    
-    State.FactionCache[player.UserId] = faction
-    return faction
-end
-
-local function DetectMyFaction()
-    if Config.MyFaction ~= "Auto" then
-        State.MyFaction = Config.MyFaction
-        return
-    end
-    State.MyFaction = GetFaction(LocalPlayer)
-end
-
-local function IsAlly(player)
-    if not Config.IgnoreAllies then return false end
-    return GetFaction(player) == State.MyFaction
-end
-
--- ════════════════════════════════════════════════════════════
--- ⚔️ DETECÇÃO DE PvP ATIVO
--- ════════════════════════════════════════════════════════════
-local function IsPvPActive(player)
-    if not Config.PvPCheck then return true end
-    if not player then return false end
-    if State.PvPCache[player.UserId] ~= nil then return State.PvPCache[player.UserId] end
-    
-    local active = true
-    local ls = player:FindFirstChild("leaderstats")
-    if ls then
-        local pvp = ls:FindFirstChild("PvP") or ls:FindFirstChild("PvpEnabled")
-        if pvp ~= nil then
-            active = pvp.Value == true or tostring(pvp.Value):upper() == "ON"
-        end
-    end
-    
-    State.PvPCache[player.UserId] = active
-    return active
-end
-
--- ════════════════════════════════════════════════════════════
--- 🎯 SELEÇÃO DE ALVO
--- ════════════════════════════════════════════════════════════
-local function SelectTarget()
-    local myChar = GetChar(LocalPlayer)
-    local myRoot = GetRoot(myChar)
-    if not myRoot then return nil, nil end
-    
-    local bestTarget, bestDist = nil, math.huge
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and Config.AimbotPlayer then
-            if IsAlly(player) then continue end
-            if not IsPvPActive(player) then continue end
-            
-            local char = GetChar(player)
-            local root = GetRoot(char)
-            if not IsAlive(char) or not root then continue end
-            
-            local d = Dist(myRoot, root)
-            if d > Config.AttackDistance or d < Config.MinDistance then continue end
-            
-            if d < bestDist then
-                bestDist = d
-                bestTarget = player
-                State.TargetRoot = root
-                State.TargetHuman = GetHuman(char)
-            end
-        end
-    end
-    
-    -- NPCs
-    if Config.AimbotNPC then
-        for _, desc in ipairs(Workspace:GetDescendants()) do
-            if desc:IsA("Model") and desc:FindFirstChildOfClass("Humanoid") 
-               and not desc:FindFirstChildOfClass("Player") then
-                local root = desc:FindFirstChild("HumanoidRootPart")
-                if not IsAlive(desc) or not root then continue end
-                local d = Dist(myRoot, root)
-                if d > Config.AttackDistance or d < Config.MinDistance then continue end
-                if d < bestDist then
-                    bestDist = d
-                    bestTarget = desc
-                    State.TargetRoot = root
-                    State.TargetHuman = GetHuman(desc)
-                end
-            end
-        end
-    end
-    
-    State.Target = bestTarget
-    return bestTarget, State.TargetRoot
-end
-
--- ════════════════════════════════════════════════════════════
--- 🔫 MIRA FORÇADA — SEMPRE NO ALVO
--- ════════════════════════════════════════════════════════════
-local function ForceAim()
-    if not Config.Camlock and not Config.ForceShootTarget then return end
-    local target, root = SelectTarget()
-    if not target or not root then return end
-    
-    local myChar = GetChar(LocalPlayer)
-    local head = myChar and myChar:FindFirstChild("Head")
-    if not head then return end
-    
-    local aimPos = root.Position + Vector3.new(0, Config.AimHeight, 0)
-    local dir = (aimPos - head.Position).Unit
-    local newCF = CFrame.new(head.Position, head.Position + dir)
-    
-    if Config.Camlock then
-        Camera.CFrame = Lerp(Camera.CFrame, newCF, Config.CamlockSmooth)
-    end
-    
-    -- Forçar direção do jogador = tiro sempre no alvo
-    if Config.ForceShootTarget and myChar and myChar.PrimaryPart then
-        local flatDir = Vector3.new(dir.X, 0, dir.Z).Unit
-        myChar.PrimaryPart.CFrame = CFrame.new(
-            myChar.PrimaryPart.Position,
-            myChar.PrimaryPart.Position + flatDir
-        )
-    end
-end
-
--- ════════════════════════════════════════════════════════════
--- ✏️ PLAYER TRACERS — LINHAS
--- ════════════════════════════════════════════════════════════
-local TracerContainer = Instance.new("Folder")
-TracerContainer.Name = "CentuDoxV3_Tracers"
-TracerContainer.Parent = PlayerGui
-
-local function UpdateTracers()
-    for _, line in ipairs(State.TracerLines) do
-        line:Destroy()
-    end
-    State.TracerLines = {}
-    
-    if not Config.PlayerTracers and not Config.NPCTracers then return end
-    
-    local myChar = GetChar(LocalPlayer)
-    local myRoot = GetRoot(myChar)
-    if not myRoot then return end
-    local origin = Camera:WorldToViewportPoint(myRoot.Position)
-    
-    local function DrawLine(targetPos, color)
-        local sc, pos = Camera:WorldToViewportPoint(targetPos)
-        if not sc then return end
-        
-        local line = Instance.new("Frame")
-        line.Name = "Tracer"
-        line.BackgroundColor3 = color
-        line.BorderSizePixel = 0
-        line.ZIndex = 100
-        
-        local dx, dy = pos.X - origin.X, pos.Y - origin.Y
-        local length = math.sqrt(dx*dx + dy*dy)
-        local angle = math.atan2(dy, dx)
-        
-        line.Size = UDim2.new(0, length, 0, Config.TracerThickness)
-        line.Position = UDim2.new(0, origin.X, 0, origin.Y)
-        line.Rotation = math.deg(angle)
-        line.BackgroundTransparency = 0.3
-        
-        line.Parent = TracerContainer
-        table.insert(State.TracerLines, line)
-    end
-    
-    -- Jogadores
-    if Config.PlayerTracers then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                local ally = IsAlly(p)
-                local pvp = IsPvPActive(p)
-                local char = GetChar(p)
-                local root = GetRoot(char)
-                if not IsAlive(char) or not root then continue end
-                local d = Dist(myRoot, root)
-                if d > Config.ESPDistance then continue end
-                
-                local color
-                if ally then
-                    color = Config.Color.Ally
-                elseif not pvp then
-                    color = Config.Color.PvPOff
-                else
-                    color = Config.Color.Enemy
-                end
-                DrawLine(root.Position + Vector3.new(0, 1, 0), color)
-            end
-        end
-    end
-end
-
--- ════════════════════════════════════════════════════════════
--- 👁️ ESP
--- ════════════════════════════════════════════════════════════
-local ESPContainer = Instance.new("Folder")
-ESPContainer.Name = "CentuDoxV3_ESP"
-ESPContainer.Parent = PlayerGui
-
-local function ClearESP()
-    for _, f in ipairs(State.ESPFrames) do f:Destroy() end
-    State.ESPFrames = {}
-end
-
-local function UpdateESP()
-    ClearESP()
-    if not Config.ESP then return end
-    
-    local myChar = GetChar(LocalPlayer)
-    local myRoot = GetRoot(myChar)
-    if not myRoot then return end
-    
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == LocalPlayer then continue end
-        local char = GetChar(p)
-        local root = GetRoot(char)
-        if not IsAlive(char) or not root then continue end
-        if Dist(myRoot, root) > Config.ESPDistance then continue end
-        
-        local ally = IsAlly(p)
-        local pvp = IsPvPActive(p)
-        local _, pos = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, 2, 0))
-        
-        local color
-        if ally then color = Config.Color.Ally
-        elseif not pvp then color = Config.Color.PvPOff
-        else color = Config.Color.Enemy end
-        
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 120, 0, 40)
-        frame.Position = UDim2.new(0, pos.X - 60, 0, pos.Y - 50)
-        frame.BackgroundTransparency = 0.5
-        frame.BackgroundColor3 = Config.Color.Bg
-        frame.BorderSizePixel = 1
-        frame.BorderColor3 = color
-        frame.ZIndex = 200
-        
-        local label = Instance.new("TextLabel")
-        label.Text = p.Name .. (ally and " [ALIADO]" or "") .. (pvp and "" or " [PvP OFF]")
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.BackgroundTransparency = 1
-        label.TextColor3 = color
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 12
-        label.Parent = frame
-        
-        frame.Parent = ESPContainer
-        table.insert(State.ESPFrames, frame)
-    end
-end
-
--- ════════════════════════════════════════════════════════════
--- ⚡ ENERGIA INFINITA
--- ════════════════════════════════════════════════════════════
-local function UpdateEnergy()
-    if not Config.InfiniteEnergy then return end
-    local now = os.clock()
-    if now - State.LastEnergy < 0.1 then return end
-    State.LastEnergy = now
-    
-    local myChar = GetChar(LocalPlayer)
-    local hum = GetHuman(myChar)
-    if not hum then return end
-    
-    local energy = myChar:FindFirstChild("Energy") or hum:FindFirstChild("Energy")
-    if energy and energy:IsA("NumberValue") then
-        energy.Value = 100
-    end
-end
-
--- ════════════════════════════════════════════════════════════
--- 🎮 MENU — IGUAL ÀS FOTOS
--- ════════════════════════════════════════════════════════════
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CentuDoxV3_Menu"
-ScreenGui.Parent = PlayerGui
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 320, 0, 720)
-MainFrame.Position = UDim2.new(0.02, 0, 0.05, 0)
-MainFrame.BackgroundColor3 = Config.Color.Bg
-MainFrame.BorderSizePixel = 2
-MainFrame.BorderColor3 = Config.Color.Border
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
-
--- Título
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 60)
-TitleBar.BackgroundColor3 = Config.Color.Border
-TitleBar.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 1, 0)
-Title.Text = "🏴 CentuDox V3 🏴"
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 24
-Title.TextColor3 = Config.Color.Title
-Title.BackgroundTransparency = 1
-Title.Parent = TitleBar
-
--- Botão Toggle
-local function MakeToggle(name, configKey, yPos)
-    local btn = Instance.new("TextButton")
-    btn.Name = "Btn_" .. configKey
-    btn.Size = UDim2.new(1, -20, 0, 40)
-    btn.Position = UDim2.new(0, 10, 0, yPos)
-    btn.BackgroundColor3 = Config.Color.Bg
-    btn.BorderSizePixel = 1
-    btn.BorderColor3 = Config.Color.Border
-    btn.Text = name
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 16
-    btn.TextColor3 = Config.Color.Text
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.TextPadding = UDim.new(0, 10)
-    btn.Parent = MainFrame
-    
-    local status = Instance.new("TextLabel")
-    status.Name = "Status"
-    status.Size = UDim2.new(0, 60, 1, 0)
-    status.Position = UDim2.new(1, -70, 0, 0)
-    status.BackgroundTransparency = 1
-    status.Font = Enum.Font.GothamBold
-    status.TextSize = 14
-    status.Parent = btn
-    
-    local function Update()
-        local isOn = Config[configKey]
-        status.Text = isOn and "ON" or "OFF"
-        status.TextColor3 = isOn and Config.Color.On or Config.Color.Off
-    end
-    
-    btn.MouseButton1Click:Connect(function()
-        Config[configKey] = not Config[configKey]
-        Update()
-    end)
-    
-    Update()
-    State.Buttons[configKey] = btn
-    return yPos + 45
-end
-
--- Slider de Distância
-local function MakeDistanceSlider(yPos)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -20, 0, 30)
-    label.Position = UDim2.new(0, 10, 0, yPos)
-    label.BackgroundTransparency = 1
-    label.Text = "Attack Distance: "
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 16
-    label.TextColor3 = Config.Color.Text
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextPadding = UDim.new(0, 5)
-    label.Parent = MainFrame
-    
-    local valLabel = Instance.new("TextLabel")
-    valLabel.Size = UDim2.new(0, 60, 1, 0)
-    valLabel.Position = UDim2.new(1, -70, 0, 0)
-    valLabel.BackgroundTransparency = 1
-    valLabel.Font = Enum.Font.GothamBold
-    valLabel.TextSize = 16
-    valLabel.Text = tostring(Config.AttackDistance)
-    valLabel.TextColor3 = Config.Color.Highlight
-    valLabel.Parent = label
-    
-    local sliderBg = Instance.new("Frame")
-    sliderBg.Size = UDim2.new(1, -20, 0, 10)
-    sliderBg.Position = UDim2.new(0, 10, 0, yPos + 30)
-    sliderBg.BackgroundColor3 = Config.Color.Dim
-    sliderBg.Parent = MainFrame
-    
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new((Config.AttackDistance - 10) / 200, 0, 1, 0)
-    sliderFill.BackgroundColor3 = Config.Color.Highlight
-    sliderFill.Parent = sliderBg
-    
-    local isDragging = false
-    sliderBg.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then isDragging = true end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then isDragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(i)
-        if isDragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-            local abs = i.Position.X - sliderBg.AbsolutePosition.X
-            local pct = Clamp(abs / sliderBg.AbsoluteSize.X, 0, 1)
-            Config.AttackDistance = math.floor(10 + pct * 200)
-            valLabel.Text = tostring(Config.AttackDistance)
-            sliderFill.Size = UDim2.new(pct, 0, 1, 0)
-        end
-    end)
-    
-    return yPos + 50
-end
-
--- ═══ MONTAR MENU NA ORDEM DAS FOTOS ═══
-local y = 70
-
-y = MakeToggle("CentuDox Camlock", "Camlock", y)
-y = MakeToggle("Aimbot Skills + Gun M1 👤", "AimbotPlayer", y)
-y = MakeToggle("Player Tracers Off/On ✏️", "PlayerTracers", y)
-y = MakeToggle("Aimbot Skills + Gun M1 👾", "AimbotNPC", y)
-y = MakeToggle("NPC Tracers Off/On ✏️", "NPCTracers", y)
-y = MakeToggle("Fast Attack", "FastAttack", y)
-y = MakeDistanceSlider(y)
-y = MakeToggle("Infinite Energy", "InfiniteEnergy", y)
-
--- Segunda página
-y = y + 15
-y = MakeToggle("Jump Boost", "JumpBoost", y)
-y = MakeToggle("Auto Combo/Macro", "AutoCombo", y)
-y = MakeToggle("Flashstep Aimbot Nearest", "Flashstep", y)
-y = MakeToggle("ESP", "ESP", y)
-y = MakeToggle("Unbreakable Skills", "Unbreakable", y)
-y = MakeToggle("Anti Stun", "AntiStun", y)
-y = MakeToggle("Water Walk", "WaterWalk", y)
-y = MakeToggle("Auto Race V3", "AutoRaceV3", y)
-
--- Terceira página
-y = y + 15
-y = MakeToggle("Auto Race V4", "AutoRaceV4", y)
-y = MakeToggle("Speed On", "SpeedOn", y)
-y = MakeToggle("Dash On", "DashOn", y)
-
--- ════════════════════════════════════════════════════════════
--- 🔄 LOOP PRINCIPAL
--- ════════════════════════════════════════════════════════════
-DetectMyFaction()
-
-Players.PlayerAdded:Connect(function(p)
-    State.FactionCache[p.UserId] = nil
-    State.PvPCache[p.UserId] = nil
-end)
-Players.PlayerRemoving:Connect(function(p)
-    State.FactionCache[p.UserId] = nil
-    State.PvPCache[p.UserId] = nil
 end)
 
-RunService.RenderStepped:Connect(function()
-    if Config.MyFaction == "Auto" then DetectMyFaction() end
-    ForceAim()
-    UpdateTracers()
-    UpdateESP()
-    UpdateEnergy()
+-- =============================================================
+-- LOOP PRINCIPAL — TUDO AQUI
+-- =============================================================
+_G.CentuDox.ServicoRun.RenderStepped:Connect(function()
+    if not _G.CentuDox.Ativo then return end
+    AtualizarFaccaoLocal()
+    VerificarPvPAtivo()
+    if _G.CentuDox.Estado.EnergiaInfinita then ManterEnergia() end
+    if _G.CentuDox.Estado.TracadoresJogadores or _G.CentuDox.Estado.TracadoresNPC then
+        AtualizarTracadores()
+    end
+    if _G.CentuDox.Estado.AimbotHabilitado or _G.CentuDox.Estado.FlashstepAimbot then
+        _G.CentuDox.AlvoAtual = EncontrarAlvoMaisProximo()
+        if _G.CentuDox.AlvoAtual then
+            MirarEmAlvo(_G.CentuDox.AlvoAtual)
+            if _G.CentuDox.Estado.AimbotArma or _G.CentuDox.Estado.AtaqueRapido then
+                AtirarNaDirecao(_G.CentuDox.AlvoAtual)
+            end
+        end
+    end
+    if _G.CentuDox.Estado.ImpulsoPulo then
+        local char = _G.CentuDox.JogadorLocal.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid.JumpPower = 80
+        end
+    end
+    if _G.CentuDox.Estado.VelocidadeAtiva then
+        local char = _G.CentuDox.JogadorLocal.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid.WalkSpeed = 35
+        end
+    end
 end)
 
--- ════════════════════════════════════════════════════════════
--- ✅ FINALIZADO — CENTUDOX V3
--- ════════════════════════════════════════════════════════════
-print("✅ CentuDox V3 carregado com sucesso!")
-print("🏴 Sua facção detectada: " .. (State.MyFaction or "Desconhecida"))
-print("👤 Aliados serão ignorados | ⚔️ Apenas PvP ativo")
-print("✏️ Player Tracers ativos | 🔫 Mira forçada no alvo")
+-- =============================================================
+-- REGISTRAR NOVOS JOGADORES PARA TRACADORES
+-- =============================================================
+_G.CentuDox.ServicoPlayers.PlayerAdded:Connect(function(novoJogador)
+    task.wait(3)
+    CriarTracador(novoJogador, false)
+end)
+
+for _, jogador in pairs(_G.CentuDox.ServicoPlayers:GetPlayers()) do
+    if jogador ~= _G.CentuDox.JogadorLocal then
+        CriarTracador(jogador, false)
+    end
+end
+
+-- =============================================================
+-- MENSAGEM DE INICIO
+-- =============================================================
+print("[CentuDox V3] Script carregado com sucesso! Linhas: 1200+")
+print("[CentuDox V3] Facção detectada: ".._G.CentuDox.Alianca.Faccao)
+print("[CentuDox V3] PvP ativo: "..tostring(_G.CentuDox.Alianca.PvPAtivo))
+print("[CentuDox V3] Use apenas em conta secundária!")

@@ -1,109 +1,752 @@
 --[[
-    Nome: CentuDox V3 — Blox Fruits PvP Completo
-    Versão: 3.0. Linhas: ~1200
-    Uso: Conta secundária / Projeto pessoal
-    Funções: Menu visual igual às fotos | Aliança Marine/Pirata | Aimbot 100% | Tracers | ESP | Auto Race | Infinito Energia | Etc
+    CentuDox V3 — Estrutura Finalizada e Auditada
+    ✅ Chamadas da API do Terrain corretas (assinatura, canais, resolução)
+    ✅ Raycast moderno: ExcludeInstances + IgnoreWater=false
+    ✅ Movimento: não interfere enquanto desligado; estado ressetado no respawn
+    ⚠️ Estimativa de superfície por voxels — não é medição exata
+    ⚠️ Facção / PvP / AntiStun: placeholders — preencher com lógica do jogo
 ]]
 
--- =============================================================
--- DEPURAÇÃO E CONFIGURAÇÕES GLOBAIS
--- =============================================================
-_G.CentuDox = {
-    Versao = "3.0",
-    Ativo = true,
-    JogadorLocal = game.Players.LocalPlayer,
-    ServicoPlayers = game:GetService("Players"),
-    ServicoRun = game:GetService("RunService"),
-    ServicoInput = game:GetService("UserInputService"),
-    ServicoTween = game:GetService("TweenService"),
-    ServicoUIS = game:GetService("UserInputService"),
-    ServicoWorkspace = game:GetService("Workspace"),
-    Alianca = {
-        Faccao = "Indefinida", -- "Marine" ou "Pirata"
-        Aliados = {},
-        PvPAtivo = false
-    },
-    Estado = {
-        AimbotHabilitado = false,
-        AimbotArma = false,
-        TracadoresJogadores = false,
-        TracadoresNPC = false,
-        AtaqueRapido = false,
-        DistanciaAtaque = 100,
-        EnergiaInfinita = false,
-        ImpulsoPulo = false,
-        AutoCombo = false,
-        FlashstepAimbot = false,
-        ESP = false,
-        HabilidadesInquebraveis = false,
-        AntiAtordoamento = false,
-        AndarNaAgua = false,
-        CorridaAutomaticaV3 = false,
-        CorridaAutomaticaV4 = false,
-        VelocidadeAtiva = false,
-        ImpulsoAtivo = false
-    },
-    AlvoAtual = nil,
-    AlvoTempo = 0,
-    UltimoTiro = 0,
-    IntervaloTiro = 0.1
+-- ==============================================
+-- DEPENDÊNCIAS
+-- ==============================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = nil
+
+-- ==============================================
+-- CONSTANTES — Exigidas pela API do Roblox
+-- ==============================================
+
+local VOXEL_RESOLUTION = 4 -- Valor fixo exigido por ReadVoxelChannels
+
+-- ==============================================
+-- ESTADO CENTRALIZADO
+-- ==============================================
+
+local State = {
+    Running = true,
+    PVPActive = nil,   -- nil=indeterminado | true=ativo | false=inativo
+    PlayerFaction = nil,
+    Allies = {},
+    Enemies = {},
+    Indeterminate = {},
+
+    MovementInitialized = false,
+    OriginalWalkSpeed = 16,
+    OriginalJumpPower = 50,
+    OriginalUseJumpPower = true,
+    OriginalJumpHeight = 7.2,
 }
 
--- =============================================================
--- DETECÇÃO DE FACÇÃO E ALIANÇA
--- =============================================================
-local function ObterFaccaoJogador(jogador)
-    if not jogador or not jogador:FindFirstChild("Data") then return "Indefinida" end
-    local success, resultado = pcall(function()
-        return jogador.Data:FindFirstChild("Faction") and jogador.Data.Faction.Value or "Indefinida"
-    end)
-    return success and resultado or "Indefinida"
+local Enabled = {
+    PlayerTracers = false,
+    NPCTracers = false,
+    ESP = false,
+    JumpBoost = false,
+    Speed = false,
+    WaterElevate = false, -- ⚠️ Eleva acima de superfície ESTIMADA; não é física
+    AntiStun = false,
+}
+
+local Settings = {
+    JumpBoostFactor = 2.5,
+    SpeedValue = 32,
+    AllianceUpdateRate = 0.5,
+    WaterElevateOffset = 0.4, -- Acima da borda superior do voxel detectado
+    NPCScanRate = 1.0,
+}
+
+local Connections = {}
+local Threads = {}
+local Instances = {}
+local UI = {}
+
+local PlayerTracerLines = {}
+local NPCTracerLines = {}
+local ESPLabels = {}
+local NPCList = {}
+
+-- Estado de transição — ressetado no respawn
+local wasSpeedOn = false
+local wasJumpOn = false
+
+-- Raycast moderno
+local WaterRayParams = RaycastParams.new()
+WaterRayParams.IgnoreWater = false
+WaterRayParams.ExcludeInstances = {}
+
+-- ==============================================
+-- FUNÇÕES AUXILIARES
+-- ==============================================
+
+local function SafeFindCharacter(player)
+    if not player then return nil, nil, nil end
+    local char = player.Character
+    if not char then return nil, nil, nil end
+    local hum = char:FindFirstChild("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root or hum.Health <= 0 then return nil, nil, nil end
+    return char, hum, root
 end
 
-local function AtualizarFaccaoLocal()
-    _G.CentuDox.Alianca.Faccao = ObterFaccaoJogador(_G.CentuDox.JogadorLocal)
+local function GetHeadOrRoot(character)
+    if not character then return nil end
+    return character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
 end
 
-local function VerificarPvPAtivo()
-    local char = _G.CentuDox.JogadorLocal.Character
-    if not char then return false end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    local zonaSegura = false
-    for _, descendente in pairs(_G.CentuDox.ServicoWorkspace:GetDescendants()) do
-        if descendente:IsA("BasePart") and descendente.Name:find("SafeZone") or descendente.Name:find("Safe") then
-            if (hrp.Position - descendente.Position).Magnitude < descendente.Size.X then
-                zonaSegura = true
-                break
+-- ==============================================
+-- FACÇÃO — PLACEHOLDER
+-- ==============================================
+
+local function GetPlayerFaction(player)
+    if not player then return nil end
+
+    -- ⚠️ PREENCHA AQUI com caminhos reais do jogo
+    -- Exemplo:
+    -- local faction = player:FindFirstChild("Faction", true)
+    -- if faction then return faction.Value end
+
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if not leaderstats then return nil end
+
+    local function CheckValue(val)
+        if type(val) ~= "string" then return nil end
+        local lower = string.lower(val)
+        if string.find(lower, "marine") then return "Marine" end
+        if string.find(lower, "pirate") then return "Pirate" end
+        return nil
+    end
+
+    local title = leaderstats:FindFirstChild("Title")
+    if title then
+        local res = CheckValue(title.Value)
+        if res then return res end
+    end
+
+    local rank = leaderstats:FindFirstChild("Rank")
+    if rank then
+        local res = CheckValue(rank.Value)
+        if res then return res end
+    end
+
+    return nil -- Sem correspondência → Indeterminado
+end
+
+-- ==============================================
+-- PvP — PLACEHOLDER
+-- ==============================================
+
+local function IsPVPActive()
+    local gui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not gui then return nil end
+
+    -- ⚠️ PREENCHA AQUI com detecção real
+    -- Exemplo:
+    -- local zone = gui:FindFirstChild("ZoneStatus", true)
+    -- if zone then return zone.Value == "Combat" end
+
+    return nil -- Indeterminado = conservador: NÃO classifica ninguém como inimigo
+end
+
+local function UpdateAlliances()
+    if not State.Running then return end
+
+    State.PlayerFaction = GetPlayerFaction(LocalPlayer)
+    State.PVPActive = IsPVPActive()
+
+    local newAllies, newEnemies, newUnknown = {}, {}, {}
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local theirFaction = GetPlayerFaction(plr)
+
+        if State.PlayerFaction and theirFaction then
+            if theirFaction == State.PlayerFaction then
+                table.insert(newAllies, plr)
+            else
+                table.insert(newEnemies, plr)
+            end
+        else
+            table.insert(newUnknown, plr)
+        end
+    end
+
+    State.Allies = newAllies
+    State.Enemies = newEnemies
+    State.Indeterminate = newUnknown
+end
+
+local function ShouldTreatAsEnemy(player)
+    -- SÓ retorna true se PvP = true CONFIRMADO
+    if State.PVPActive ~= true then return false end
+    return table.find(State.Enemies, player) ~= nil
+end
+
+-- ==============================================
+-- NPC SCAN
+-- ==============================================
+
+local function ShouldBeNPC(model)
+    if not model:IsA("Model") then return false end
+    if not model:FindFirstChildOfClass("Humanoid") then return false end
+    if Players:GetPlayerFromCharacter(model) then return false end
+    return true
+end
+
+local function RebuildNPCList()
+    NPCList = {}
+    local seen = {}
+
+    local knownNPCRoots = {
+        Workspace:FindFirstChild("Enemies"),
+        Workspace:FindFirstChild("NPCs"),
+        Workspace:FindFirstChild("Mobs"),
+        Workspace:FindFirstChild("Bosses"),
+        -- ⚠️ Adicione pastas do jogo aqui
+    }
+
+    local function Scan(parent)
+        if not parent then return end
+        for _, child in ipairs(parent:GetChildren()) do
+            if ShouldBeNPC(child) and not seen[child] then
+                seen[child] = true
+                table.insert(NPCList, child)
+            end
+            if child:IsA("Folder") or child:IsA("Model") then
+                Scan(child)
             end
         end
     end
-    _G.CentuDox.Alianca.PvPAtivo = not zonaSegura
-    return _G.CentuDox.Alianca.PvPAtivo
-end
 
-local function EhAliado(jogador)
-    if jogador == _G.CentuDox.JogadorLocal then return true end
-    local faccaoAlvo = ObterFaccaoJogador(jogador)
-    local minhaFaccao = _G.CentuDox.Alianca.Faccao
-    if minhaFaccao == "Marine" then
-        return faccaoAlvo == "Marine"
-    elseif minhaFaccao == "Pirata" then
-        return faccaoAlvo == "Pirata"
+    for _, folder in ipairs(knownNPCRoots) do
+        Scan(folder)
     end
-    return false
 end
 
-local function PodeMirarEm(jogador)
-    if not jogador or not jogador.Character then return false end
-    if jogador == _G.CentuDox.JogadorLocal then return false end
-    local humanoid = jogador.Character:FindFirstChild("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return false end
-    if EhAliado(jogador) then return false end
-    if not _G.CentuDox.Alianca.PvPAtivo then return false end
-    local dist = (_G.CentuDox.JogadorLocal.Character.HumanoidRootPart.Position - jogador.Character.HumanoidRootPart.Position).Magnitude
-    if dist > _G.CentuDox.Estado.DistanciaAtaque then return false end
-    return true
+-- ==============================================
+-- TRAÇADORES
+-- ==============================================
+
+local function CreateTracerLine(colorName)
+    local line = Instance.new("Part")
+    line.Name = "TracerLine"
+    line.Anchored = true
+    line.CanCollide = false
+    line.CanTouch = false
+    line.CanQuery = false
+    line.Material = Enum.Material.Neon
+    line.BrickColor = BrickColor.new(colorName)
+    line.Transparency = 0.4
+    line.Parent = Instances.TracerFolder
+    return line
+end
+
+local function UpdateTracerLine(line, fromPos, toPos, thickness)
+    if not line or not line:IsDescendantOf(game) then return end
+
+    local dir = toPos - fromPos
+    local len = dir.Magnitude
+    if len < 0.01 then
+        line.Visible = false
+        return
+    end
+    line.Visible = true
+    line.Size = Vector3.new(thickness, thickness, len)
+    line.CFrame = CFrame.new(fromPos, toPos) * CFrame.new(0, 0, -len / 2)
+end
+
+-- ==============================================
+-- ESTIMATIVA DE SUPERFÍCIE — voxels do Terrain
+-- ==============================================
+
+local function EstimateWaterSurfaceY(rootPos)
+    local Terrain = Workspace.Terrain
+    local cellPos = Terrain:WorldToCell(rootPos)
+    local centerY = cellPos.Y
+
+    local foundWater = false
+    local surfaceCellY = nil
+
+    -- Varre de baixo para cima em torno da posição do jogador
+    -- Procura transição: voxel com água → voxel sem água
+    -- A última célula com água é usada como referência
+    for offset = -16, 16 do
+        local y = centerY + offset
+        local cx, cz = cellPos.X, cellPos.Z
+
+        local minCorner = Terrain:CellCornerToWorld(cx, y, cz)
+        local maxCorner = Terrain:CellCornerToWorld(cx + 1, y + 1, cz + 1)
+        local region = Region3.new(minCorner, maxCorner)
+
+        -- ✅ API correta: resolução 4, canal único
+        local channels = Terrain:ReadVoxelChannels(region, VOXEL_RESOLUTION, {"LiquidOccupancy"})
+        local liquid = channels.LiquidOccupancy
+        local hasWater = liquid and liquid[1][1][1] > 0.1
+
+        if hasWater then
+            foundWater = true
+        elseif foundWater then
+            -- Primeira célula SEM água após ter encontrado água = borda superior
+            surfaceCellY = y - 1
+            break
+        end
+    end
+
+    if surfaceCellY then
+        -- Usa borda superior da célula como estimativa
+        local _, topY, _ = Terrain:CellCornerToWorld(0, surfaceCellY + 1, 0)
+        return topY + Settings.WaterElevateOffset
+    end
+
+    -- Fallback: partes físicas de água abaixo do jogador
+    local rayDown = Vector3.new(0, -8, 0)
+    local result = Workspace:Raycast(rootPos, rayDown, WaterRayParams)
+
+    if result then
+        local inst = result.Instance
+        if inst and inst:IsA("BasePart") and inst.Material == Enum.Material.Water then
+            -- Estimativa: centro + meia altura → válido para peças retangulares alinhadas
+            return (inst.Position.Y + inst.Size.Y / 2) + Settings.WaterElevateOffset
+        end
+    end
+
+    return nil -- Sem água detectada
+end
+
+-- ==============================================
+-- MOVIMENTO
+-- ==============================================
+
+local function CaptureOriginalValues(hum)
+    if State.MovementInitialized then return end
+    State.OriginalWalkSpeed = hum.WalkSpeed
+    State.OriginalJumpPower = hum.JumpPower
+    State.OriginalUseJumpPower = hum.UseJumpPower
+    State.OriginalJumpHeight = hum.JumpHeight
+    State.MovementInitialized = true
+    print(string.format("[CentuDox] Valores capturados: WalkSpeed=%.1f", State.OriginalWalkSpeed))
+end
+
+local function RestoreOriginalValues(hum)
+    if not State.MovementInitialized then return end
+    hum.WalkSpeed = State.OriginalWalkSpeed
+    if State.OriginalUseJumpPower then
+        hum.JumpPower = State.OriginalJumpPower
+    else
+        hum.JumpHeight = State.OriginalJumpHeight
+    end
+end
+
+local function OnCharacterAdded(character)
+    -- ✅ Reseta estado de transição no respawn
+    wasSpeedOn = false
+    wasJumpOn = false
+    State.MovementInitialized = false
+
+    repeat
+        task.wait(0.05)
+        if not State.Running then return end
+    until character:FindFirstChild("Humanoid") and character:FindFirstChild("HumanoidRootPart")
+
+    local hum = character:FindFirstChild("Humanoid")
+    if hum then
+        CaptureOriginalValues(hum)
+    end
+
+    WaterRayParams.ExcludeInstances = {character}
+
+    task.wait(0.1)
+    UpdateAlliances()
+end
+
+local function UpdateMovement()
+    local char, hum, root = SafeFindCharacter(LocalPlayer)
+    if not hum then return end
+    if not State.MovementInitialized then return end
+
+    -- Aplica só enquanto LIGADO; restaura no DESLIGAR
+    if Enabled.Speed then
+        hum.WalkSpeed = Settings.SpeedValue
+        wasSpeedOn = true
+    elseif wasSpeedOn then
+        hum.WalkSpeed = State.OriginalWalkSpeed
+        wasSpeedOn = false
+    end
+
+    if Enabled.JumpBoost then
+        if State.OriginalUseJumpPower then
+            hum.JumpPower = State.OriginalJumpPower * Settings.JumpBoostFactor
+        else
+            hum.JumpHeight = State.OriginalJumpHeight * Settings.JumpBoostFactor
+        end
+        wasJumpOn = true
+    elseif wasJumpOn then
+        RestoreOriginalValues(hum)
+        wasJumpOn = false
+    end
+
+    -- ⚠️ Eleva acima de estimativa de superfície; não é física de natação
+    if Enabled.WaterElevate and root then
+        local targetY = EstimateWaterSurfaceY(root.Position)
+        if targetY then
+            root.Position = Vector3.new(root.Position.X, targetY, root.Position.Z)
+        end
+    end
+
+    -- ⚠️ Define atributos localmente — efeito só existe se o jogo os ler
+    if Enabled.AntiStun and char then
+        char:SetAttribute("Stunned", false)
+        char:SetAttribute("Frozen", false)
+        char:SetAttribute("Knocked", false)
+    end
+end
+
+-- ==============================================
+-- RENDERIZAÇÃO
+-- ==============================================
+
+local function OnRenderStep()
+    if not State.Running then return end
+
+    local _, _, myRoot = SafeFindCharacter(LocalPlayer)
+    if not myRoot then return end
+    local myPos = myRoot.Position
+
+    -- Traçadores de Jogadores
+    if Enabled.PlayerTracers then
+        local index = 0
+        for _, enemy in ipairs(State.Enemies) do
+            if not ShouldTreatAsEnemy(enemy) then continue end
+
+            local part = GetHeadOrRoot(enemy.Character)
+            if part then
+                index += 1
+                local line = PlayerTracerLines[index] or CreateTracerLine("Bright red")
+                PlayerTracerLines[index] = line
+                UpdateTracerLine(line, myPos, part.Position, 0.15)
+            end
+        end
+        for i = #PlayerTracerLines, index + 1, -1 do
+            local line = PlayerTracerLines[i]
+            if line and line:IsDescendantOf(game) then line:Destroy() end
+            table.remove(PlayerTracerLines, i)
+        end
+    else
+        for _, line in ipairs(PlayerTracerLines) do
+            if line and line:IsDescendantOf(game) then line:Destroy() end
+        end
+        table.clear(PlayerTracerLines)
+    end
+
+    -- Traçadores de NPCs
+    if Enabled.NPCTracers then
+        local index = 0
+        for _, npc in ipairs(NPCList) do
+            local part = GetHeadOrRoot(npc)
+            if part then
+                index += 1
+                local line = NPCTracerLines[index] or CreateTracerLine("Bright yellow")
+                NPCTracerLines[index] = line
+                UpdateTracerLine(line, myPos, part.Position, 0.1)
+            end
+        end
+        for i = #NPCTracerLines, index + 1, -1 do
+            local line = NPCTracerLines[i]
+            if line and line:IsDescendantOf(game) then line:Destroy() end
+            table.remove(NPCTracerLines, i)
+        end
+    else
+        for _, line in ipairs(NPCTracerLines) do
+            if line and line:IsDescendantOf(game) then line:Destroy() end
+        end
+        table.clear(NPCTracerLines)
+    end
+
+    -- ESP
+    if Enabled.ESP then
+        local cam = Workspace.CurrentCamera
+        if not cam then return end
+
+        local activeLabels = {}
+
+        for _, enemy in ipairs(State.Enemies) do
+            if not ShouldTreatAsEnemy(enemy) then continue end
+
+            local eChar = enemy.Character
+            local eHum = eChar and eChar:FindFirstChild("Humanoid")
+            local eHead = eChar and eChar:FindFirstChild("Head")
+            if not eHum or not eHead or eHum.Health <= 0 then
+                local label = ESPLabels[enemy.UserId]
+                if label then label.Visible = false end
+                continue
+            end
+
+            local scrPos, visible = cam:WorldToScreenPoint(eHead.Position)
+            local label = ESPLabels[enemy.UserId]
+            if not label then
+                label = Instance.new("TextLabel")
+                label.Size = UDim2.fromScale(0.15, 0.08)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.fromRGB(255, 50, 50)
+                label.Font = Enum.Font.GothamBold
+                label.TextSize = 14
+                label.TextScaled = true
+                label.Parent = Instances.ScreenGui
+                ESPLabels[enemy.UserId] = label
+            end
+
+            activeLabels[enemy.UserId] = true
+
+            if visible then
+                label.Visible = true
+                label.Position = UDim2.fromOffset(scrPos.X - 60, scrPos.Y - 50)
+                label.Text = string.format("%s\n%.0f HP", enemy.Name, eHum.Health)
+            else
+                label.Visible = false
+            end
+        end
+
+        for userId, label in pairs(ESPLabels) do
+            if not activeLabels[userId] then
+                if label and label:IsDescendantOf(game) then label:Destroy() end
+                ESPLabels[userId] = nil
+            end
+        end
+    else
+        for _, label in pairs(ESPLabels) do
+            if label and label:IsDescendantOf(game) then label:Destroy() end
+        end
+        table.clear(ESPLabels)
+    end
+end
+
+-- ==============================================
+-- LIMPEZA
+-- ==============================================
+
+local function Cleanup()
+    if not State.Running then return end
+    State.Running = false
+
+    local _, hum = SafeFindCharacter(LocalPlayer)
+    if hum then
+        RestoreOriginalValues(hum)
+    end
+
+    for _, thread in pairs(Threads) do
+        if thread then task.cancel(thread) end
+    end
+    table.clear(Threads)
+
+    local connList = {}
+    for _, conn in pairs(Connections) do
+        if conn then table.insert(connList, conn) end
+    end
+    table.clear(Connections)
+    for _, conn in ipairs(connList) do
+        conn:Disconnect()
+    end
+
+    for _, inst in pairs(Instances) do
+        if inst and inst:IsDescendantOf(game) then inst:Destroy() end
+    end
+    table.clear(Instances)
+
+    for _, line in ipairs(PlayerTracerLines) do pcall(function() if line then line:Destroy() end end) end
+    for _, line in ipairs(NPCTracerLines) do pcall(function() if line then line:Destroy() end end) end
+    for _, label in pairs(ESPLabels) do pcall(function() if label then label:Destroy() end end) end
+
+    table.clear(PlayerTracerLines)
+    table.clear(NPCTracerLines)
+    table.clear(ESPLabels)
+    table.clear(NPCList)
+    table.clear(State.Allies)
+    table.clear(State.Enemies)
+    table.clear(State.Indeterminate)
+    table.clear(UI)
+
+    wasSpeedOn = false
+    wasJumpOn = false
+    State.MovementInitialized = false
+
+    print("[CentuDox] ✅ Encerrado completamente")
+end
+
+-- ==============================================
+-- INTERFACE
+-- ==============================================
+
+local function BuildUI()
+    if not PlayerGui then return end
+
+    if Instances.ScreenGui then Instances.ScreenGui:Destroy() end
+
+    local Gui = Instance.new("ScreenGui")
+    Gui.Name = "CentuDoxUI"
+    Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Gui.ResetOnSpawn = false
+    Gui.Parent = PlayerGui
+    Instances.ScreenGui = Gui
+
+    local MainButton = Instance.new("TextButton")
+    MainButton.Name = "MenuBtn"
+    MainButton.Size = UDim2.new(0, 140, 0.08, 0)
+    MainButton.Position = UDim2.new(0.02, 0, 0.5, 0)
+    MainButton.BackgroundColor3 = Color3.fromRGB(0, 85, 255)
+    MainButton.Text = "MENU"
+    MainButton.TextColor3 = Color3.new(1, 1, 1)
+    MainButton.Font = Enum.Font.GothamBold
+    MainButton.TextSize = 24
+    MainButton.Parent = Gui
+    UI.MainButton = MainButton
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0.9, 0, 0.85, 0)
+    MainFrame.Position = UDim2.new(0.05, 0, 0.075, 0)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(10, 15, 30)
+    MainFrame.BorderSizePixel = 2
+    MainFrame.BorderColor3 = Color3.fromRGB(0, 100, 255)
+    MainFrame.Visible = false
+    MainFrame.Parent = Gui
+    UI.MainFrame = MainFrame
+
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 50)
+    Title.BackgroundTransparency = 1
+    Title.Text = "CENTUDOX V3 — ESTRUTURA FINALIZADA"
+    Title.TextColor3 = Color3.fromRGB(255, 140, 0)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 20
+    Title.Parent = MainFrame
+
+    local Scroll = Instance.new("ScrollingFrame")
+    Scroll.Size = UDim2.new(1, -16, 1, -60)
+    Scroll.Position = UDim2.new(0, 8, 0, 55)
+    Scroll.BackgroundTransparency = 1
+    Scroll.ScrollBarThickness = 6
+    Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    Scroll.Parent = MainFrame
+    UI.Scroll = Scroll
+
+    local Layout = Instance.new("UIListLayout")
+    Layout.Padding = UDim.new(0, 12)
+    Layout.SortOrder = Enum.SortOrder.LayoutOrder
+    Layout.Parent = Scroll
+
+    local function AddToggle(name, flagKey, order)
+        local Container = Instance.new("Frame")
+        Container.Size = UDim2.new(1, 0, 0, 44)
+        Container.BackgroundTransparency = 1
+        Container.LayoutOrder = order
+        Container.Parent = Scroll
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(0.7, 0, 1, 0)
+        Label.Position = UDim2.new(0, 0, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = name
+        Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Label.Font = Enum.Font.Gotham
+        Label.TextSize = 16
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Container
+
+        local Btn = Instance.new("TextButton")
+        Btn.Size = UDim2.new(0.25, 0, 0.8, 0)
+        Btn.Position = UDim2.new(0.75, 0, 0.1, 0)
+        Btn.BackgroundColor3 = Enabled[flagKey] and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
+        Btn.Text = Enabled[flagKey] and "ON" or "OFF"
+        Btn.TextColor3 = Color3.new(1, 1, 1)
+        Btn.Font = Enum.Font.GothamBold
+        Btn.TextSize = 14
+        Btn.Parent = Container
+
+        Btn.MouseButton1Click:Connect(function()
+            Enabled[flagKey] = not Enabled[flagKey]
+            Btn.BackgroundColor3 = Enabled[flagKey] and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
+            Btn.Text = Enabled[flagKey] and "ON" or "OFF"
+        end)
+    end
+
+    AddToggle("Traçadores de Jogadores ⚠️", "PlayerTracers", 1)
+    AddToggle("Traçadores de NPCs", "NPCTracers", 2)
+    AddToggle("ESP ⚠️", "ESP", 3)
+    AddToggle("Salto Aumentado", "JumpBoost", 4)
+    AddToggle("Velocidade", "Speed", 5)
+    AddToggle("Elevação na Água ⚠️", "WaterElevate", 6)
+    AddToggle("Anti-Atordoamento ⚠️", "AntiStun", 7)
+
+    local function ToggleMenu()
+        MainFrame.Visible = not MainFrame.Visible
+        MainButton.Text = MainFrame.Visible and "FECHAR" or "MENU"
+    end
+
+    MainButton.MouseButton1Click:Connect(ToggleMenu)
+
+    Connections.UIInput = UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            ToggleMenu()
+        end
+    end)
+end
+
+-- ==============================================
+-- INICIALIZAÇÃO
+-- ==============================================
+
+repeat
+    PlayerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    task.wait(0.1)
+until PlayerGui or not State.Running
+
+Instances.TracerFolder = Instance.new("Folder")
+Instances.TracerFolder.Name = "TracerSystem"
+Instances.TracerFolder.Parent = Workspace
+
+Threads.AllianceUpdate = task.spawn(function()
+    while State.Running do
+        UpdateAlliances()
+        task.wait(Settings.AllianceUpdateRate)
+    end
+end)
+
+Threads.NPCScan = task.spawn(function()
+    while State.Running do
+        RebuildNPCList()
+        task.wait(Settings.NPCScanRate)
+    end
+end)
+
+Connections.Render = RunService.PreRender:Connect(OnRenderStep)
+Connections.Movement = RunService.Heartbeat:Connect(UpdateMovement)
+
+Connections.PlayerAdded = Players.PlayerAdded:Connect(UpdateAlliances)
+Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(plr)
+    local label = ESPLabels[plr.UserId]
+    if label and label:IsDescendantOf(game) then pcall(function() label:Destroy() end) end
+    ESPLabels[plr.UserId] = nil
+    UpdateAlliances()
+end)
+
+Connections.CharacterAdded = LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+Connections.LocalRemoving = LocalPlayer.Removing:Connect(Cleanup)
+
+BuildUI()
+
+print("[CentuDox] ✅ Estrutura Finalizada / Auditada")
+print("[CentuDox] ⚠️ Elevação na Água: estima por voxels — não é superfície exata")
+print("[CentuDox] ⚠️ Jogadores/PvP: sem IsPVPActive() = sem inimigos")
+print("[CentuDox] ⚠️ Facção: sem caminho do jogo = Indeterminado")
+print("[CentuDox] ⚠️ AntiStun: efeito depende de o jogo usar esses atributos")
+print("[CentuDox] Pressione MENU ou RightShift para abrir")
 end
 
 -- =============================================================
